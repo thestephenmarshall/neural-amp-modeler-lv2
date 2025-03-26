@@ -89,6 +89,22 @@ namespace NAM {
 		if (options != nullptr)
 			options_set(this, options);
 
+		// fallback load if no model is loaded via state/host
+		if (!currentModel) {
+			const char* envPath = std::getenv("NAM_MODEL_PATH");
+			if (envPath && strlen(envPath) < MAX_FILE_NAME) {
+				try {
+					currentModel = NeuralAudio::NeuralModel::CreateFromFile(envPath);
+					currentModelPath = envPath;
+					lv2_log_trace(&logger, "[NAM] Loaded model from ENV: %s\n", envPath);
+				} catch (const std::exception& e) {
+					lv2_log_error(&logger, "[NAM] Failed to load model from ENV: %s\n", envPath);
+				}
+			} else {
+				lv2_log_trace(&logger, "[NAM] NAM_MODEL_PATH not set or too long\n");
+			}
+		}
+
 		return true;
 	}
 
@@ -403,9 +419,19 @@ namespace NAM {
 
 		// Check if a path is set
 		if (!value || (type != nam->uris.atom_Path))
-		{
-			msg.path[0] = '\0';
-		}
+    {
+        // Try to load from environment variable if no state path is set
+        const char* envPath = std::getenv("NAM_MODEL_PATH");
+        if (envPath && strlen(envPath) < MAX_FILE_NAME)
+        {
+            memcpy(msg.path, envPath, strlen(envPath));
+            lv2_log_trace(&nam->logger, "Restoring from ENV NAM_MODEL_PATH='%s'\n", msg.path);
+        }
+        else
+        {
+            msg.path[0] = '\0'; // still nothing to load
+        }
+    }
 		else
 		{
 			LV2_State_Map_Path* map_path = (LV2_State_Map_Path*)lv2_features_data(features, LV2_STATE__mapPath);
